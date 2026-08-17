@@ -3,13 +3,20 @@ require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/functions.php';
 require_once __DIR__ . '/includes/nav_data.php';
 
-require_site_public();
+$user = current_user();
+
+$site_public = get_setting('site_public', '0') === '1';
+$has_members = (int) db()->query('SELECT COUNT(*) FROM members')->fetchColumn() > 0;
+$show_login_only = !$site_public && !is_admin() && $has_members && $user === null;
+
+if (!$show_login_only) {
+    require_site_public();
+}
 
 $site_title = get_setting('site_title', '루키홈');
 $hero_handle = get_setting('hero_handle', 'WELCOME TO MY HOME');
 $hero_year = get_setting('hero_year', date('Y'));
 $hero_corner_chars = preg_split('//u', get_setting('hero_corner_text', '近墨者黑'), -1, PREG_SPLIT_NO_EMPTY);
-$user = current_user();
 $nav_items = build_nav_items($user);
 ?>
 <!DOCTYPE html>
@@ -30,6 +37,34 @@ $nav_items = build_nav_items($user);
 </head>
 <body>
 <main class="home">
+    <?php if ($show_login_only) { ?>
+    <div class="auth-page">
+        <?php $login_image = get_setting('login_image'); ?>
+        <?php if ($login_image) { ?>
+        <img src="<?php echo esc($login_image); ?>" alt="<?php echo esc($site_title); ?>" class="auth-logo-image">
+        <?php } ?>
+        <div class="auth-card">
+            <form method="post" action="login.php" autocomplete="off" class="login-form">
+                <?php echo csrf_field(); ?>
+                <div class="login-top">
+                    <div class="login-inputs">
+                        <input type="text" name="username" placeholder="아이디" maxlength="20" required autofocus>
+                        <input type="password" name="password" placeholder="비밀번호" maxlength="72" required>
+                    </div>
+                    <button type="submit" class="btn-primary login-submit">LOGIN</button>
+                </div>
+                <div class="login-extra">
+                    <?php if (registration_is_open()) { ?>
+                    <a href="register.php">회원가입</a>
+                    <?php } else { ?>
+                    <span></span>
+                    <?php } ?>
+                    <label class="checkbox-row"><input type="checkbox" name="remember"> 자동로그인</label>
+                </div>
+            </form>
+        </div>
+    </div>
+    <?php } else { ?>
     <div class="paper-card">
         <span class="corner-number corner-tl"><?php echo esc($hero_corner_chars[0] ?? ''); ?></span>
         <span class="corner-number corner-tr"><?php echo esc($hero_corner_chars[1] ?? ''); ?></span>
@@ -46,12 +81,16 @@ $nav_items = build_nav_items($user);
             <span class="card-date"><?php echo esc($hero_year); ?></span>
         </div>
     </div>
+    <?php } ?>
 </main>
 
 <script>
 const NAV_ITEMS = <?php echo json_encode($nav_items, JSON_UNESCAPED_UNICODE); ?>;
+const SHOW_MENU = <?php echo $show_login_only ? 'false' : 'true'; ?>;
 
 (function () {
+    if (!SHOW_MENU) return;
+
     const menuBtn = document.createElement("button");
     menuBtn.className = "menu-btn";
     menuBtn.id = "menu-btn";
@@ -70,6 +109,7 @@ const NAV_ITEMS = <?php echo json_encode($nav_items, JSON_UNESCAPED_UNICODE); ?>
         const a = document.createElement("a");
         a.href = item.href;
         a.textContent = item.label;
+        if (item.isNew) a.dataset.new = "1";
         nav.appendChild(a);
     });
 
@@ -94,8 +134,9 @@ const NAV_ITEMS = <?php echo json_encode($nav_items, JSON_UNESCAPED_UNICODE); ?>
     let seqIndex = 0;
     nav.querySelectorAll("a").forEach((el) => {
         const text = el.textContent;
+        const isNew = el.dataset.new === "1";
         el.textContent = "";
-        el.setAttribute("aria-label", text);
+        el.setAttribute("aria-label", text + (isNew ? " (새 글)" : ""));
         [...text].forEach((ch) => {
             const span = document.createElement("span");
             span.className = "char-fast";
@@ -105,6 +146,20 @@ const NAV_ITEMS = <?php echo json_encode($nav_items, JSON_UNESCAPED_UNICODE); ?>
             el.appendChild(span);
             seqIndex++;
         });
+        if (isNew) {
+            const badge = document.createElement("span");
+            badge.className = "nav-new-badge";
+            badge.setAttribute("aria-hidden", "true");
+            [..."NEW"].forEach((ch) => {
+                const span = document.createElement("span");
+                span.className = "char-fast";
+                span.textContent = ch;
+                span.style.animationDelay = `${seqIndex * 0.025}s`;
+                badge.appendChild(span);
+                seqIndex++;
+            });
+            el.appendChild(badge);
+        }
     });
 })();
 
